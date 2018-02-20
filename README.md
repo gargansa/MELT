@@ -12,3 +12,6 @@ Please visit the [ColorShift Wiki](https://github.com/gargansa/ColorShift/wiki) 
 
 ## ColorShift
 [ColorShift](https://github.com/gargansa/ColorShift) is a plugin that adds support for some of the new / advanced features of the [M3D ProMega 3D Printer](https://store.printm3d.com/pages/promega).
+
+## Version History
+*--- Add version notes n stuff here...*

@@ -68,6 +68,10 @@ def adjust_extruder_rate(existing_gcode, *ext):
     return setup_line
 
 
+def print_debug(report_data):
+    setup_line = ";Debug " + str(report_data) +"\n"
+    return setup_line
+
 class ColorShift(Script):
     version = "2.0.0"
 
@@ -265,7 +269,6 @@ class ColorShift(Script):
             for line in lines:
                 if ";LAYER_COUNT:" in line:
                     # FINDING THE ACTUAL AFFECTED LAYERS
-                    # Find the actual total layers in the gcode
                     total_layers = float(line[(line.index(':') + 1): len(line)])
                     # Calculate positions based on total_layers
                     if clamp_choice == 'percent':
@@ -276,23 +279,34 @@ class ColorShift(Script):
                         start_position = int(clamp(layer_start, 0, total_layers))
                         current_position = start_position
                         end_position = int(clamp(layer_end, 0, total_layers))
-                    # Find the layers that are actually affected or the ones within the clamp set by user
+                    # how many layers are affected
                     adjusted_layers = end_position - start_position
                     # Make sure the change_rate doesnt sit outside of allowed values
                     change_rate = int(clamp(change_rate, 1, adjusted_layers))
 
-                    # SETTING THE FLOWS SET BY USER IN EXPERT CONTROLS (needs simplified)
-                    # Need to make sure total of values set for extruder add up to 1 (needs written)
-                    # Account for user defining less then actual number of extruders
+                    # SETTING THE FLOWS SET BY USER IN EXPERT CONTROLS 3 STEPS (Needs Simplified)
+                    # Step 1 Make sure User defined at least as many extruder values as needed
                     while len(initial_flows) < qty_extruders:
                         initial_flows.append(0)
-                    # Assign initial flow set by user in expert controls (exclude extra extruders set by user)
+                    # Step 2 Make sure totals add up to 1 no more no less
+                    location = 0
+                    check_total = 0
+                    for ext in base_input:
+                        if check_total + initial_flows[location] <= 1:
+                            check_total += initial_flows[location]
+                        else:
+                            initial_flows[location] = 1-check_total
+                            check_total += initial_flows[location]
+                        if check_total < 1:
+                            initial_flows[location] = 1 - check_total
+                        location += 1
+                    # Step 3 Assign values to extruders disregarding extras
                     flow_location = 0
                     for ext in base_input:
                         base_input[flow_location] = initial_flows[flow_location]
                         flow_location += 1
 
-                    # ASSIGN THE INITIAL VALUES TO A GCODE LINE
+                    # ASSIGN THE INITIAL VALUES TO A SINGLE GCODE LINE
                     ext_gcode_list = [''] * qty_extruders
                     gcode_index = 0
                     for code in ext_gcode_list:
@@ -304,51 +318,52 @@ class ColorShift(Script):
                     else:
                         modified_gcode = adjust_extruder_rate(line, *ext_gcode_list[::-1])
 
-                    # decide how much the extruder should change through the print
+                    # INITIATE VALUES USED THROUGH THE AFFECTED LAYERS
+                    changes_total = int(adjusted_layers/change_rate)  # how many times are we allowed to adjust
+                    changes_per_extruder = int(changes_total/(qty_extruders-1))  # how many times for each extruder are we allowed to adjust
                     current_extruder = 0
                     next_extruder = 1
-                    changes_total = int((adjusted_layers-change_rate)/change_rate)  # how many times are we allowed to adjust
-                    changes_per_extruder = int((changes_total/(qty_extruders-1))+0.5)  # how many times for each extruder are we allowed to adjust
+                    ext_fraction = changes_per_extruder
 
-                    full_bar = int((changes_total/(qty_extruders-1))+0.5)
-                    empty_bar = 0
-
-                # Find where to add for affected layers
+                # CHANGES MADE TO LAYERS THROUGH THE AFFECTED LAYERS
                 elif ";LAYER:" + str(current_position) in line and int(current_position) < int(end_position):
 
-                    # turning the rate into a modified percentage based on other factors
+                    # ADJUST EXTRUDER RATES FOR NEXT AFFECTED LAYER 2 PARTS (should be simplified)
+                    # Part 1 adjust rate by fraction to avoid rounding errors from addition
+                    base_input[current_extruder] = ext_fraction/changes_per_extruder
+                    base_input[next_extruder] = (changes_per_extruder-ext_fraction)/changes_per_extruder
+                    ext_fraction -= 1
+                    
+                    # Part 2 initialize what percentage to reach wrap extruders back to start if out of range
+                    if ext_fraction < 0:
+                        current_extruder += 1
+                        next_extruder += 1
+                        ext_fraction = changes_per_extruder
+                    if next_extruder == qty_extruders:
+                        next_extruder = 0
+
+                    # lAST TWEAK ADJUST THE EXTRUDER VALUES BY FLOW ADJUSTMENTS AND LIMITS
                     ext_gcode_list = [''] * qty_extruders
                     gcode_index = 0
                     for ext in ext_gcode_list:
                         ext_gcode_list[ext_gcode_list.index(ext)] = format(base_input[gcode_index] * flow_adjust * flow_clamp_adjust + flow_min, '.3f')
                         gcode_index += 1
 
-                    # send the rate to be turned into a string
+                    # TURN THE EXTRUDER VALUES INTO A SINGLE GCODE LINE
                     if direction == 'normal':
                         modified_gcode = adjust_extruder_rate(line, *ext_gcode_list)
                     else:
                         modified_gcode = adjust_extruder_rate(line, *ext_gcode_list[::-1])
 
-                    # Setting up the extruder rates afterwards so first one is in correct spot
-                    if full_bar <= 0:
-                        current_extruder += 1
-                        next_extruder += 1
-                        full_bar = int((changes_total/(qty_extruders-1))+0.5)
-                        empty_bar = 0
-                        if next_extruder >= qty_extruders:
-                            next_extruder = 0
+                        # just for debugging
+                    modified_gcode += print_debug(ext_fraction)
+                    modified_gcode += print_debug(current_extruder)
+                    modified_gcode += print_debug(next_extruder)
 
-                    for ext in base_input:
-                        if base_input.index(ext) == current_extruder:
-                            full_bar -= 1
-                            base_input[base_input.index(ext)] = full_bar/changes_per_extruder
-                        elif base_input.index(ext) == next_extruder:
-                            empty_bar += 1
-                            base_input[base_input.index(ext)] = empty_bar/changes_per_extruder
-
+                    # CHANGE THE POSITION FOR NEXT RUN
                     current_position += change_rate
 
-                # If no conditions apply leave the code alone
+                # If not a layer change leave the code alone
                 else:
                     modified_gcode += line + "\n"
 
@@ -356,4 +371,5 @@ class ColorShift(Script):
             data[index] = modified_gcode
             index += 1
         return data
+
 

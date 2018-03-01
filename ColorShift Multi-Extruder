@@ -41,15 +41,15 @@ def initiate_extruder(existing_gcode, *ext):
             setup_line += ":" + str(i)
     setup_line += " H1 ;Define tool 0" + "\n"
     # Position tool
-    for i in range(0, qty_ext):
-        setup_line += "M563 P" + str(i + 1) + " D" + str(i) + " H" + str(i + 1)
-        setup_line += " ;Position " + str(i + 1) + " tool" + "\n"
+    #for i in range(0, qty_ext):
+    #    setup_line += "M563 P" + str(i + 1) + " D" + str(i) + " H1"
+    #    setup_line += " ;Position " + str(i + 1) + " tool" + "\n"
     # Set axis offsets
     setup_line += "G10 P0 X0 Y0 Z0 ;Set tool 0 axis offsets" + "\n"
     # Activate tool
-    setup_line += "G10 P2 R120 S220 ;Set initial tool 0 active" + "\n"
+    setup_line += "G10 P0 R120 S220 ;Set initial tool 0 active"
     # Set initial extrusion rate
-    setup_line += adjust_extruder_rate(";Initial Extruder Rate", *ext)
+    setup_line += adjust_extruder_rate("", *ext)
     # Initiate the tool
     setup_line += "M568 P0 S1 ;Turn on tool mixing for the extruder" + "\n"
     return setup_line
@@ -60,7 +60,7 @@ def adjust_extruder_rate(existing_gcode, *ext):
     i = 0
     for item in ext:
         if i == 0:
-            setup_line = existing_gcode + " ;Modified: \nM567 P0 E" + str(item)
+            setup_line = existing_gcode + "  \nM567 P0 E" + str(item)
         else:
             setup_line += ":" + str(item)
         i += 1

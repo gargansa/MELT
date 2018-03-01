@@ -1,5 +1,4 @@
 from ..Script import Script
-import math
 import random
 
 # current bugs
@@ -9,14 +8,19 @@ import random
 # Support for 2-4 extruders
 # Initial Flow for raft or anything before affected layers
 # First part of modifiers so future options can be added easier (needs work)
-# Modifiers Part 1. base_input - allowing it to be easier to add a woodtexture modifier and heart beat modifier
-# Modifiers Part 2. change_rate - allowing random distances between changes
+# Modifiers Part 1. base_input - allowing it to be easier to add a wood texture modifier and heart beat modifier
+# Modifiers Part 2. change_rate - allowing random distances between changes for wood texture
+# Fixed duplicate 0:1:0, 0:1:0:0, and 0:0:1:0 showing up
+# Abandoned Overflow until able to prove its useful
+
+# Next features
+# Allow user to chose what color to end print with after adjusted layers are complete (make sure doesnt overlap last adjustment)
+# Add Heartbeat modifier
+
 
 # Credits for contributions
 # gargansa, bass4aj
 
-# Naming Credits
-# Scott Witchaski - std overflow
 
 
 # Convenience function for gargansa's coding familiarity
@@ -174,18 +178,10 @@ class ColorShift(Script):
                     "options": {"1":"Linear","0":"Circular"},
                     "default_value": "linear"
                 },
-                "d_trigger":
-                {
-                    "label": "Overflow Type",
-                    "description": "Since the number of adjustments may not always be equally divided by the number of extruders this decides what to do with the remainder.  ::Standard Overflow: Any extra continues the shift pattern, circular continues to the next extruder, linear adds to the last shift.  ::Extend Flow: Lengthen the length of a chosen extruder.",
-                    "type": "enum",
-                    "options": {"standard":"Standard Overflow","extended":"Extended Overflow"},
-                    "default_value": "standard"
-                },
                 "e_trigger":
                 {
                     "label": "Modifier Type",
-                    "description": "Explain Here",
+                    "description": "::Normal: Sets the shift to change gradually throughout the length of the layers within the clamp. ::Wood Texture: Sets one extruder at a random small percentage and adjusts change frequency by a random amount, simulating wood grain.",
                     "type": "enum",
                     "options": {"normal":"Normal","wood":"Wood Texture"},
                     "default_value": "normal"
@@ -243,7 +239,6 @@ class ColorShift(Script):
         # NEED TO PROVE THAT THESE ARE NEEDED OR WANTED
         # TRYING TO ACCOUNT FOR RETURNING TO ORIGINAL COLOR AND LEFTOVER LAYERS THAT DONT DIVIDE INTO EXTRUDERS
         loop = self.getSettingValueByKey("c_trigger")  # linear or circular (not currently enabled)
-        overflow = self.getSettingValueByKey("d_trigger")  # standard or extended (not currently enabled)
 
         modifier = self.getSettingValueByKey("e_trigger")  # normal, wood, beat
         change_rate = int(self.getSettingValueByKey("change_rate"))  # clamp within understandable range
@@ -358,7 +353,7 @@ class ColorShift(Script):
                     if ext_fraction < 0:
                         current_extruder += 1
                         next_extruder += 1
-                        ext_fraction = changes_per_extruder
+                        ext_fraction = changes_per_extruder-1  # -1 to avoid duplicate 0:1:0
                     if next_extruder == qty_extruders:
                         next_extruder = 0
 
@@ -375,7 +370,7 @@ class ColorShift(Script):
                     else:
                         modified_gcode = adjust_extruder_rate(line, *ext_gcode_list[::-1])
 
-                    # just for debugging
+                    # DEBUGGING ONLY OUTPUTS TO GCODE FILE
                     #modified_gcode += print_debug(ext_fraction)
                     #modified_gcode += print_debug(current_extruder)
                     #modified_gcode += print_debug(next_extruder)

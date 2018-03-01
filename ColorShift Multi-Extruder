@@ -12,15 +12,15 @@ import random
 # Modifiers Part 2. change_rate - allowing random distances between changes for wood texture
 # Fixed duplicate 0:1:0, 0:1:0:0, and 0:0:1:0 showing up
 # Abandoned Overflow until able to prove its useful
+# Re-enabled the initiate_extruder function
 
 # Next features
 # Allow user to chose what color to end print with after adjusted layers are complete (make sure doesnt overlap last adjustment)
 # Add Heartbeat modifier
-
+# Enable ability to wrap the shift back to the beginning nozzle with user input circular or linear
 
 # Credits for contributions
 # gargansa, bass4aj
-
 
 
 # Convenience function for gargansa's coding familiarity
@@ -42,7 +42,7 @@ def initiate_extruder(existing_gcode, *ext):
     setup_line += " H1 ;Define tool 0" + "\n"
     # Position tool
     for i in range(0, qty_ext):
-        setup_line += "M563 P2 D" + str(i) + " H" + str(i + 1)
+        setup_line += "M563 P" + str(i + 1) + " D" + str(i) + " H" + str(i + 1)
         setup_line += " ;Position " + str(i + 1) + " tool" + "\n"
     # Set axis offsets
     setup_line += "G10 P0 X0 Y0 Z0 ;Set tool 0 axis offsets" + "\n"
@@ -327,9 +327,9 @@ class ColorShift(Script):
 
                     # change direction of shift if set by user
                     if direction == 'normal':
-                        modified_gcode = adjust_extruder_rate(line, *ext_gcode_list)
+                        modified_gcode = initiate_extruder(line, *ext_gcode_list)
                     else:
-                        modified_gcode = adjust_extruder_rate(line, *ext_gcode_list[::-1])
+                        modified_gcode = initiate_extruder(line, *ext_gcode_list[::-1])
 
                     # INITIATE VALUES USED THROUGH THE AFFECTED LAYERS
                     changes_total = int(adjusted_layers/change_rate)  # how many times are we allowed to adjust
@@ -416,5 +416,4 @@ def standard_rate(rate):
 def wood_rate(min_percentage, max_percentage):
     random_value = int(random.uniform(min_percentage, max_percentage))
     return random_value
-
 

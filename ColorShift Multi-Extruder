@@ -3,32 +3,28 @@ import math
 import random
 
 # current bugs
-# running two sets of post processing fails the second post process, also does this with some other plugins that come with cura so may be caused by cura
-# need description of project
-# need proofreading and better explanations from feedback
+# Two post processors wont run at the same time. Probably a Cura Issue
 
-# New Updates
-# added support for multiple extruders
-# initial flow Multiple extruder support
+# Current Version contains
+# Support for 2-4 extruders
+# Initial Flow for raft or anything before affected layers
+# First part of modifiers so future options can be added easier (needs work)
+# Modifiers Part 1. base_input - allowing it to be easier to add a woodtexture modifier and heart beat modifier
+# Modifiers Part 2. change_rate - allowing random distances between changes
 
-# Goals
-# need to make two things more modular or flexible so adding options in the future is more readable
-# 1. base_input - allowing it to be easier to add a woodtexture modifier and heart beat modifier
-# 2. change_rate - allowing random distances between changes
-
-# Credits for contribution
+# Credits for contributions
 # gargansa, bass4aj
 
 # Naming Credits
 # Scott Witchaski - std overflow
 
 
-
-# convenience function for gargansa's coding familiarity
+# Convenience function for gargansa's coding familiarity
 def clamp(value, minimum, maximum):
     return max(minimum, min(value, maximum))
 
-# function to compile the initial setup into a string
+
+# Function to compile the initial setup into a string
 def initiate_extruder(existing_gcode, *ext):
     qty_ext = len(ext)
     setup_line = ";Modified by ColorShift" + "\n"
@@ -55,7 +51,7 @@ def initiate_extruder(existing_gcode, *ext):
     return setup_line
 
 
-# function to compile extruder info into a string
+# Function to compile extruder info into a string
 def adjust_extruder_rate(existing_gcode, *ext):
     i = 0
     for item in ext:
@@ -68,9 +64,11 @@ def adjust_extruder_rate(existing_gcode, *ext):
     return setup_line
 
 
+# Just used to output info to text file to help debug
 def print_debug(report_data):
-    setup_line = ";Debug " + str(report_data) +"\n"
+    setup_line = ";Debug " + str(report_data) + "\n"
     return setup_line
+
 
 class ColorShift(Script):
     version = "2.0.0"
@@ -173,7 +171,7 @@ class ColorShift(Script):
                     "label": "Shift Loop Type",
                     "description": "::Linear: Start with primary extruder finish with last extruder. ::Circular: Start with primary extruder shift through to last extruder and then shift back to primary extruder",
                     "type": "enum",
-                    "options": {"linear":"Linear","circular":"Circular"},
+                    "options": {"1":"Linear","0":"Circular"},
                     "default_value": "linear"
                 },
                 "d_trigger":
@@ -183,6 +181,14 @@ class ColorShift(Script):
                     "type": "enum",
                     "options": {"standard":"Standard Overflow","extended":"Extended Overflow"},
                     "default_value": "standard"
+                },
+                "e_trigger":
+                {
+                    "label": "Modifier Type",
+                    "description": "Explain Here",
+                    "type": "enum",
+                    "options": {"normal":"Normal","wood":"Wood Texture"},
+                    "default_value": "normal"
                 },
                 "e1_trigger":
                 {
@@ -233,24 +239,30 @@ class ColorShift(Script):
         # Set user settings from cura
         clamp_choice = self.getSettingValueByKey("a_trigger")
         direction = self.getSettingValueByKey("b_trigger")
-        loop = self.getSettingValueByKey("c_trigger")  # linear or circular
-        overflow = self.getSettingValueByKey("d_trigger")  # standard or extended
 
+        # NEED TO PROVE THAT THESE ARE NEEDED OR WANTED
+        # TRYING TO ACCOUNT FOR RETURNING TO ORIGINAL COLOR AND LEFTOVER LAYERS THAT DONT DIVIDE INTO EXTRUDERS
+        loop = self.getSettingValueByKey("c_trigger")  # linear or circular (not currently enabled)
+        overflow = self.getSettingValueByKey("d_trigger")  # standard or extended (not currently enabled)
+
+        modifier = self.getSettingValueByKey("e_trigger")  # normal, wood, beat
         change_rate = int(self.getSettingValueByKey("change_rate"))  # clamp within understandable range
-
         initial_flows = [float(initial_flow) for initial_flow in self.getSettingValueByKey("initial_flow").strip().split(',')]
-
         flow_adjust = float((self.getSettingValueByKey("flow_adjust")) / 100) + 1  # convert user input into multi
         qty_extruders = int(self.getSettingValueByKey("qty_extruders"))
         flow_min = float(self.getSettingValueByKey("flow_min") / 100) * qty_extruders
         flow_clamp_adjust = float(1 - (flow_min * qty_extruders))
+
+        # INITIATE EXTRUDERS AS ZERO EXCEPT FIRST ONE
         base_input = [0] * qty_extruders
         base_input[0] = 1
-        # Make sure user settings are in order after loading
+
+        # CHECK ORDER OF VALUES ENTERED BY USER
         percent_start = float(self.getSettingValueByKey("percent_change_start") / 100)
         percent_end = float(self.getSettingValueByKey("percent_change_end") / 100)
         layer_start = int(self.getSettingValueByKey("layer_change_start"))
         layer_end = int(self.getSettingValueByKey("layer_change_end"))
+        # REORDER IF BACKWARDS
         if percent_end < percent_start:
             percent_start, percent_end = percent_end, percent_start
         if layer_end < layer_start:
@@ -270,6 +282,7 @@ class ColorShift(Script):
                 if ";LAYER_COUNT:" in line:
                     # FINDING THE ACTUAL AFFECTED LAYERS
                     total_layers = float(line[(line.index(':') + 1): len(line)])
+
                     # Calculate positions based on total_layers
                     if clamp_choice == 'percent':
                         start_position = int(int(total_layers) * float(percent_start))
@@ -279,8 +292,10 @@ class ColorShift(Script):
                         start_position = int(clamp(layer_start, 0, total_layers))
                         current_position = start_position
                         end_position = int(clamp(layer_end, 0, total_layers))
+
                     # how many layers are affected
                     adjusted_layers = end_position - start_position
+
                     # Make sure the change_rate doesnt sit outside of allowed values
                     change_rate = int(clamp(change_rate, 1, adjusted_layers))
 
@@ -288,6 +303,7 @@ class ColorShift(Script):
                     # Step 1 Make sure User defined at least as many extruder values as needed
                     while len(initial_flows) < qty_extruders:
                         initial_flows.append(0)
+
                     # Step 2 Make sure totals add up to 1 no more no less
                     location = 0
                     check_total = 0
@@ -300,6 +316,7 @@ class ColorShift(Script):
                         if check_total < 1:
                             initial_flows[location] = 1 - check_total
                         location += 1
+
                     # Step 3 Assign values to extruders disregarding extras
                     flow_location = 0
                     for ext in base_input:
@@ -312,6 +329,7 @@ class ColorShift(Script):
                     for code in ext_gcode_list:
                         ext_gcode_list[ext_gcode_list.index(code)] = format(base_input[gcode_index] * flow_adjust * flow_clamp_adjust + flow_min, '.3f')
                         gcode_index += 1
+
                     # change direction of shift if set by user
                     if direction == 'normal':
                         modified_gcode = adjust_extruder_rate(line, *ext_gcode_list)
@@ -320,7 +338,7 @@ class ColorShift(Script):
 
                     # INITIATE VALUES USED THROUGH THE AFFECTED LAYERS
                     changes_total = int(adjusted_layers/change_rate)  # how many times are we allowed to adjust
-                    changes_per_extruder = int(changes_total/(qty_extruders-1))  # how many times for each extruder are we allowed to adjust
+                    changes_per_extruder = int(changes_total/(qty_extruders-1))
                     current_extruder = 0
                     next_extruder = 1
                     ext_fraction = changes_per_extruder
@@ -330,11 +348,13 @@ class ColorShift(Script):
 
                     # ADJUST EXTRUDER RATES FOR NEXT AFFECTED LAYER 2 PARTS (should be simplified)
                     # Part 1 adjust rate by fraction to avoid rounding errors from addition
-                    base_input[current_extruder] = ext_fraction/changes_per_extruder
-                    base_input[next_extruder] = (changes_per_extruder-ext_fraction)/changes_per_extruder
-                    ext_fraction -= 1
-                    
+                    if modifier == 'normal':
+                        base_input[current_extruder], base_input[next_extruder] = standard_shift(ext_fraction, changes_per_extruder)
+                    elif modifier == 'wood':
+                        base_input[current_extruder], base_input[next_extruder] = wood_shift(0.05, 0.25)
+
                     # Part 2 initialize what percentage to reach wrap extruders back to start if out of range
+                    ext_fraction -= 1
                     if ext_fraction < 0:
                         current_extruder += 1
                         next_extruder += 1
@@ -355,21 +375,51 @@ class ColorShift(Script):
                     else:
                         modified_gcode = adjust_extruder_rate(line, *ext_gcode_list[::-1])
 
-                        # just for debugging
-                    modified_gcode += print_debug(ext_fraction)
-                    modified_gcode += print_debug(current_extruder)
-                    modified_gcode += print_debug(next_extruder)
+                    # just for debugging
+                    #modified_gcode += print_debug(ext_fraction)
+                    #modified_gcode += print_debug(current_extruder)
+                    #modified_gcode += print_debug(next_extruder)
 
                     # CHANGE THE POSITION FOR NEXT RUN
-                    current_position += change_rate
+                    if modifier == 'normal':
+                        current_position += standard_rate(change_rate)
+                    elif modifier == 'wood':
+                        current_position += wood_rate(change_rate, change_rate*2)
 
-                # If not a layer change leave the code alone
+                # CHANGES MADE AFTER THE LAST AFFECTED LAYER TO COMPLETE THE PRINT WITH
+                elif ";LAYER:" + str(current_position) in line and int(current_position) == int(end_position):
+                    # GIVE THE ABILITY TO CHANGE THE REMAINDER OF THE PRINTS (BEYOND AFFECTED_LAYERS) COLOR
+                    modified_gcode += line + "\n"
+                    #modified_gcode += adjust_extruder_rate(line, *ext_gcode_list)
+
+                # LEAVE ALL OTHER LINES ALONE SINCE THEY ARE NOT NEW LAYERS
                 else:
                     modified_gcode += line + "\n"
 
-            # Replace the data
+            # REPLACE THE DATA
             data[index] = modified_gcode
             index += 1
         return data
+
+
+# MODIFIERS FOR DIFFERENT EFFECTS ON EXTRUDERS
+# SHIFTS AFFECT EXTRUDER RATIOS AND RETURN BOTH VALUES TOGETHER (X AND 1-X)
+def standard_shift(numerator, denominator):
+    return numerator/denominator, (denominator-numerator)/denominator
+
+
+def wood_shift(min_percentage, max_percentage):
+    random_value = random.uniform(min_percentage, max_percentage)
+    return random_value, 1-random_value
+
+
+# RATES AFFECT FREQUENCY OF SHIFTS AND RETURN ONE VALUE
+def standard_rate(rate):
+    return rate
+
+
+def wood_rate(min_percentage, max_percentage):
+    random_value = int(random.uniform(min_percentage, max_percentage))
+    return random_value
 
 

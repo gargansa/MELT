@@ -202,6 +202,15 @@ class ColorShift(Script):
                     "default_value": "1,0,0,0",
                     "enabled": "e1_trigger"
                 },
+                "final_flow":
+                {
+                    "label": "Final Main Flow",
+                    "description": "Flow to initially set extruders must total up to 1.000  ::This allows the extruder to be set for any portion of the print after the affected layers.",
+                    "unit": "0-1",
+                    "type": "str",
+                    "default_value": "0,0,0,1",
+                    "enabled": "e1_trigger"
+                },
                 "flow_adjust":
                 {
                     "label": "Ext Flow Adjust",
@@ -243,6 +252,7 @@ class ColorShift(Script):
         modifier = self.getSettingValueByKey("e_trigger")  # normal, wood, beat
         change_rate = int(self.getSettingValueByKey("change_rate"))  # clamp within understandable range
         initial_flows = [float(initial_flow) for initial_flow in self.getSettingValueByKey("initial_flow").strip().split(',')]
+        final_flows = [float(final_flow) for final_flow in self.getSettingValueByKey("final_flow").strip().split(',')]
         flow_adjust = float((self.getSettingValueByKey("flow_adjust")) / 100) + 1  # convert user input into multi
         qty_extruders = int(self.getSettingValueByKey("qty_extruders"))
         flow_min = float(self.getSettingValueByKey("flow_min") / 100) * qty_extruders
@@ -294,29 +304,24 @@ class ColorShift(Script):
                     # Make sure the change_rate doesnt sit outside of allowed values
                     change_rate = int(clamp(change_rate, 1, adjusted_layers))
 
-                    # SETTING THE FLOWS SET BY USER IN EXPERT CONTROLS 3 STEPS (Needs Simplified)
-                    # Step 1 Make sure User defined at least as many extruder values as needed
-                    while len(initial_flows) < qty_extruders:
-                        initial_flows.append(0)
-
-                    # Step 2 Make sure totals add up to 1 no more no less
-                    location = 0
+                    # SETTING THE FLOWS SET BY USER IN EXPERT CONTROLS
+                    # make sure there are as many values set as extruders selected
+                    while len(initial_flows) < len(base_input):
+                        initial_flows.append(float(0))
+                    # Make sure totals add up to 1 no more no less and make sure extras are disregarded
                     check_total = 0
-                    for ext in base_input:
-                        if check_total + initial_flows[location] <= 1:
-                            check_total += initial_flows[location]
-                        else:
-                            initial_flows[location] = 1-check_total
-                            check_total += initial_flows[location]
-                        if check_total < 1:
-                            initial_flows[location] = 1 - check_total
-                        location += 1
+                    i = 0
+                    for ext in base_input:  # Disregard extras
+                        initial_flows[i] = clamp(initial_flows[i], 0, 1)  # Clamp to value range
 
-                    # Step 3 Assign values to extruders disregarding extras
-                    flow_location = 0
-                    for ext in base_input:
-                        base_input[flow_location] = initial_flows[flow_location]
-                        flow_location += 1
+                        if initial_flows[i] + check_total < 1:  # Keep within total of 1
+                            base_input[i] = initial_flows[i]
+                        else:
+                            base_input[i] = 1 - check_total
+                        check_total += base_input[i]
+                        i += 1
+
+
 
                     # ASSIGN THE INITIAL VALUES TO A SINGLE GCODE LINE
                     ext_gcode_list = [''] * qty_extruders
@@ -383,10 +388,7 @@ class ColorShift(Script):
 
                 # CHANGES MADE AFTER THE LAST AFFECTED LAYER TO COMPLETE THE PRINT WITH
                 elif ";LAYER:" + str(current_position) in line and int(current_position) == int(end_position):
-                    # GIVE THE ABILITY TO CHANGE THE REMAINDER OF THE PRINTS (BEYOND AFFECTED_LAYERS) COLOR
                     modified_gcode += line + "\n"
-                    #modified_gcode += adjust_extruder_rate(line, *ext_gcode_list)
-
                 # LEAVE ALL OTHER LINES ALONE SINCE THEY ARE NOT NEW LAYERS
                 else:
                     modified_gcode += line + "\n"

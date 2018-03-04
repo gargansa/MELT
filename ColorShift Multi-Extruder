@@ -13,9 +13,10 @@ import random
 # Fixed duplicate 0:1:0, 0:1:0:0, and 0:0:1:0 showing up
 # Abandoned Overflow until able to prove its useful
 # Re-enabled the initiate_extruder function
+# Ability to choose what color the print ends with after adjusted layers
+# Added debug reporting to gcode file for troubleshooting user problems that may arise
 
 # Next features
-# Allow user to chose what color to end print with after adjusted layers are complete (make sure doesnt overlap last adjustment)
 # Add Heartbeat modifier
 # Enable ability to wrap the shift back to the beginning nozzle with user input circular or linear
 
@@ -69,13 +70,16 @@ def adjust_extruder_rate(existing_gcode, *ext):
 
 
 # Just used to output info to text file to help debug
-def print_debug(report_data):
-    setup_line = ";Debug " + str(report_data) + "\n"
+def print_debug(*report_data):
+    setup_line = ";Debug "
+    for item in report_data:
+        setup_line += str(item)
+    setup_line += "\n"
     return setup_line
 
 
 class ColorShift(Script):
-    version = "2.0.0"
+    version = "3.0.0"
 
     def __init__(self):
         super().__init__()
@@ -245,8 +249,7 @@ class ColorShift(Script):
         clamp_choice = self.getSettingValueByKey("a_trigger")
         direction = self.getSettingValueByKey("b_trigger")
 
-        # NEED TO PROVE THAT THESE ARE NEEDED OR WANTED
-        # TRYING TO ACCOUNT FOR RETURNING TO ORIGINAL COLOR AND LEFTOVER LAYERS THAT DONT DIVIDE INTO EXTRUDERS
+        # EVENTUALLY USED TO MAKE THE EXTRUDER LOOP BACK TO THE FIRST EXTRUDER
         loop = self.getSettingValueByKey("c_trigger")  # linear or circular (not currently enabled)
 
         modifier = self.getSettingValueByKey("e_trigger")  # normal, wood, beat
@@ -305,23 +308,20 @@ class ColorShift(Script):
                     change_rate = int(clamp(change_rate, 1, adjusted_layers))
 
                     # SETTING THE FLOWS SET BY USER IN EXPERT CONTROLS
-                    # make sure there are as many values set as extruders selected
-                    while len(initial_flows) < len(base_input):
+                    while len(initial_flows) < len(base_input):  # Ensure at least as many are set as needed
                         initial_flows.append(float(0))
-                    # Make sure totals add up to 1 no more no less and make sure extras are disregarded
-                    check_total = 0
+                    total_value = 0
                     i = 0
                     for ext in base_input:  # Disregard extras
                         initial_flows[i] = clamp(initial_flows[i], 0, 1)  # Clamp to value range
-
-                        if initial_flows[i] + check_total < 1:  # Keep within total of 1
+                        if i == len(base_input)-1 and total_value < 1:  # Make the last one add up to 1
+                            base_input[i] = 1 - total_value
+                        elif initial_flows[i] + total_value < 1:  # Keep within total of 1
                             base_input[i] = initial_flows[i]
                         else:
-                            base_input[i] = 1 - check_total
-                        check_total += base_input[i]
+                            base_input[i] = 1 - total_value
+                        total_value += base_input[i]
                         i += 1
-
-
 
                     # ASSIGN THE INITIAL VALUES TO A SINGLE GCODE LINE
                     ext_gcode_list = [''] * qty_extruders
@@ -335,6 +335,14 @@ class ColorShift(Script):
                         modified_gcode = initiate_extruder(line, *ext_gcode_list)
                     else:
                         modified_gcode = initiate_extruder(line, *ext_gcode_list[::-1])
+
+                    # DEBUG FOR USER REPORTING
+                    modified_gcode += print_debug("Version:", self.version)
+                    modified_gcode += print_debug("Clamp_choice:", clamp_choice, "  Direction:", direction, "  Modifier:", modifier)
+                    modified_gcode += print_debug("Change_rate:", change_rate, "  Initial_flows:", initial_flows, "  Final_flows", final_flows)
+                    modified_gcode += print_debug("Qty_extruders:", qty_extruders, "  Flow_min:", flow_min)
+                    modified_gcode += print_debug("Percent_start:", percent_start, "  Percent_end:", percent_end)
+                    modified_gcode += print_debug("Layer_start:", layer_start, "  Layer_end:", layer_end)
 
                     # INITIATE VALUES USED THROUGH THE AFFECTED LAYERS
                     changes_total = int(adjusted_layers/change_rate)  # how many times are we allowed to adjust
@@ -375,11 +383,6 @@ class ColorShift(Script):
                     else:
                         modified_gcode = adjust_extruder_rate(line, *ext_gcode_list[::-1])
 
-                    # DEBUGGING ONLY OUTPUTS TO GCODE FILE
-                    #modified_gcode += print_debug(ext_fraction)
-                    #modified_gcode += print_debug(current_extruder)
-                    #modified_gcode += print_debug(next_extruder)
-
                     # CHANGE THE POSITION FOR NEXT RUN
                     if modifier == 'normal':
                         current_position += standard_rate(change_rate)
@@ -387,8 +390,37 @@ class ColorShift(Script):
                         current_position += wood_rate(change_rate, change_rate*2)
 
                 # CHANGES MADE AFTER THE LAST AFFECTED LAYER TO COMPLETE THE PRINT WITH
-                elif ";LAYER:" + str(current_position) in line and int(current_position) == int(end_position):
-                    modified_gcode += line + "\n"
+                elif ";LAYER:" + str(current_position) in line:  # Runs last and only runs once
+                    # SETTING THE FLOWS SET BY USER IN EXPERT CONTROLS
+                    while len(final_flows) < len(base_input):  # Ensure at least as many are set as needed
+                        final_flows.append(float(0))
+                    total_value = 0
+                    i = 0
+                    for ext in base_input:  # Disregard extras
+                        final_flows[i] = clamp(final_flows[i], 0, 1)  # Clamp to value range
+                        if i == len(base_input) - 1 and total_value < 1:  # Make the last one add up to 1
+                            base_input[i] = 1 - total_value
+                        elif final_flows[i] + total_value < 1:  # Keep within total of 1
+                            base_input[i] = final_flows[i]
+                        else:
+                            base_input[i] = 1 - total_value
+                        total_value += base_input[i]
+                        i += 1
+
+                        # ASSIGN THE INITIAL VALUES TO A SINGLE GCODE LINE
+                        ext_gcode_list = [''] * qty_extruders
+                        gcode_index = 0
+                        for code in ext_gcode_list:
+                            ext_gcode_list[ext_gcode_list.index(code)] = format(
+                                base_input[gcode_index] * flow_adjust * flow_clamp_adjust + flow_min, '.3f')
+                            gcode_index += 1
+
+                        # change direction of shift if set by user
+                        if direction == 'normal':
+                            modified_gcode = adjust_extruder_rate(line, *ext_gcode_list)
+                        else:
+                            modified_gcode = adjust_extruder_rate(line, *ext_gcode_list[::-1])
+
                 # LEAVE ALL OTHER LINES ALONE SINCE THEY ARE NOT NEW LAYERS
                 else:
                     modified_gcode += line + "\n"
@@ -418,4 +450,5 @@ def standard_rate(rate):
 def wood_rate(min_percentage, max_percentage):
     random_value = int(random.uniform(min_percentage, max_percentage))
     return random_value
+
 

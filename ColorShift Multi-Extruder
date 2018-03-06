@@ -1,8 +1,6 @@
-from ..Script import Script
-import random
-
 # current bugs
 # Two post processors wont run at the same time. Probably a Cura Issue
+# Cura skipping setup info
 
 # Current Version contains
 # Support for 2-4 extruders
@@ -23,6 +21,8 @@ import random
 # Credits for contributions
 # gargansa, bass4aj
 
+from ..Script import Script
+import random
 
 # Convenience function for gargansa's coding familiarity
 def clamp(value, minimum, maximum):
@@ -332,9 +332,9 @@ class ColorShift(Script):
 
                     # change direction of shift if set by user
                     if direction == 'normal':
-                        modified_gcode = initiate_extruder(line, *ext_gcode_list)
+                        modified_gcode += initiate_extruder(line, *ext_gcode_list)
                     else:
-                        modified_gcode = initiate_extruder(line, *ext_gcode_list[::-1])
+                        modified_gcode += initiate_extruder(line, *ext_gcode_list[::-1])
 
                     # DEBUG FOR USER REPORTING
                     modified_gcode += print_debug("Version:", self.version)
@@ -379,9 +379,9 @@ class ColorShift(Script):
 
                     # TURN THE EXTRUDER VALUES INTO A SINGLE GCODE LINE
                     if direction == 'normal':
-                        modified_gcode = adjust_extruder_rate(line, *ext_gcode_list)
+                        modified_gcode += adjust_extruder_rate(line, *ext_gcode_list)
                     else:
-                        modified_gcode = adjust_extruder_rate(line, *ext_gcode_list[::-1])
+                        modified_gcode += adjust_extruder_rate(line, *ext_gcode_list[::-1])
 
                     # CHANGE THE POSITION FOR NEXT RUN
                     if modifier == 'normal':
@@ -417,9 +417,9 @@ class ColorShift(Script):
 
                         # change direction of shift if set by user
                         if direction == 'normal':
-                            modified_gcode = adjust_extruder_rate(line, *ext_gcode_list)
+                            modified_gcode += adjust_extruder_rate(line, *ext_gcode_list)
                         else:
-                            modified_gcode = adjust_extruder_rate(line, *ext_gcode_list[::-1])
+                            modified_gcode += adjust_extruder_rate(line, *ext_gcode_list[::-1])
 
                 # LEAVE ALL OTHER LINES ALONE SINCE THEY ARE NOT NEW LAYERS
                 else:
@@ -450,5 +450,4 @@ def standard_rate(rate):
 def wood_rate(min_percentage, max_percentage):
     random_value = int(random.uniform(min_percentage, max_percentage))
     return random_value
-
 

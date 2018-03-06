@@ -1,6 +1,5 @@
 # current bugs
 # Two post processors wont run at the same time. Probably a Cura Issue
-# Cura skipping setup info
 
 # Current Version contains
 # Support for 2-4 extruders

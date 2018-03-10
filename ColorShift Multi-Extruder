@@ -12,9 +12,12 @@
 # Re-enabled the initiate_extruder function
 # Ability to choose what color the print ends with after adjusted layers
 # Added debug reporting to gcode file for troubleshooting user problems that may arise
+# Ability to set the initial extruder rate and not shift through the print by setting change rate to 0
+# Pattern Modifier added (Heartbeat)
+# Split Rate Modifiers from Modifiers to add versatility
+
 
 # Next features
-# Add Heartbeat modifier
 # Enable ability to wrap the shift back to the beginning nozzle with user input circular or linear
 
 # Credits for contributions
@@ -78,14 +81,14 @@ def print_debug(*report_data):
 
 
 class ColorShift(Script):
-    version = "3.0.0"
+    version = "3.1.0"
 
     def __init__(self):
         super().__init__()
 
     def getSettingDataString(self):
         return """{
-            "name":"ColorShift",
+            "name":"ColorShift """ + self.version + """ (MultiExtruder)",
             "key":"ColorShift",
             "metadata": {},
             "version": 2,
@@ -164,11 +167,11 @@ class ColorShift(Script):
                 "change_rate":
                 {
                     "label": "Shift frequency",
-                    "description": "How many layers until the color is shifted each time",
+                    "description": "How many layers until the color is shifted each time. Setting to 0 Allows the initial rate to be set only.",
                     "unit": "#",
                     "type": "int",
                     "default_value": 4,
-                    "minimum_value": "1",
+                    "minimum_value": "0",
                     "maximum_value": "1000",
                     "minimum_value_warning": "1",
                     "maximum_value_warning": "100"
@@ -184,10 +187,26 @@ class ColorShift(Script):
                 "e_trigger":
                 {
                     "label": "Modifier Type",
-                    "description": "::Normal: Sets the shift to change gradually throughout the length of the layers within the clamp. ::Wood Texture: Sets one extruder at a random small percentage and adjusts change frequency by a random amount, simulating wood grain.",
+                    "description": "::Normal: Sets the shift to change gradually throughout the length of the layers within the clamp. ::Wood Texture: Sets one extruder at a random small percentage and adjusts change frequency by a random amount, simulating wood grain. ::Repeating Pattern: Repeats a set extruder pattern throughout the print. ",
                     "type": "enum",
-                    "options": {"normal":"Normal","wood":"Wood Texture"},
+                    "options": {"normal":"Normal", "wood":"Wood Texture", "pattern":"Repeating Pattern"},
                     "default_value": "normal"
+                },
+                "f_trigger":
+                {
+                    "label": "Rate Modifier Type",
+                    "description": "How often the print shifts. ::Normal: Uses the change rate.  ::Random: picks a number of layers between the set change_rate and change_rate*2",
+                    "type": "enum",
+                    "options": {"normal":"Normal", "random":"Random"},
+                    "default_value": "normal"
+                },
+                "pattern":
+                {
+                    "label": "Pattern",
+                    "description": "Set a repeating pattern of extruder values between 0 and 1.",
+                    "type": "str",
+                    "default_value": "0.5,1,0.25,0.75,0.5,0",
+                    "enabled": "e_trigger == 'pattern'"
                 },
                 "e1_trigger":
                 {
@@ -251,14 +270,16 @@ class ColorShift(Script):
         # EVENTUALLY USED TO MAKE THE EXTRUDER LOOP BACK TO THE FIRST EXTRUDER
         loop = self.getSettingValueByKey("c_trigger")  # linear or circular (not currently enabled)
 
-        modifier = self.getSettingValueByKey("e_trigger")  # normal, wood, beat
-        change_rate = int(self.getSettingValueByKey("change_rate"))  # clamp within understandable range
+        modifier = self.getSettingValueByKey("e_trigger")  # normal, wood, pattern
+        rate_modifier = self.getSettingValueByKey("f_trigger")
+        change_rate = int(self.getSettingValueByKey("change_rate"))
         initial_flows = [float(initial_flow) for initial_flow in self.getSettingValueByKey("initial_flow").strip().split(',')]
         final_flows = [float(final_flow) for final_flow in self.getSettingValueByKey("final_flow").strip().split(',')]
         flow_adjust = float((self.getSettingValueByKey("flow_adjust")) / 100) + 1  # convert user input into multi
         qty_extruders = int(self.getSettingValueByKey("qty_extruders"))
         flow_min = float(self.getSettingValueByKey("flow_min") / 100) * qty_extruders
         flow_clamp_adjust = float(1 - (flow_min * qty_extruders))
+        pattern = [float(pattern) for pattern in self.getSettingValueByKey("pattern").strip().split(',')]
 
         # INITIATE EXTRUDERS AS ZERO EXCEPT FIRST ONE
         base_input = [0] * qty_extruders
@@ -304,7 +325,7 @@ class ColorShift(Script):
                     adjusted_layers = end_position - start_position
 
                     # Make sure the change_rate doesnt sit outside of allowed values
-                    change_rate = int(clamp(change_rate, 1, adjusted_layers))
+                    change_rate = int(clamp(change_rate, 0, adjusted_layers))
 
                     # SETTING THE FLOWS SET BY USER IN EXPERT CONTROLS
                     while len(initial_flows) < len(base_input):  # Ensure at least as many are set as needed
@@ -337,14 +358,20 @@ class ColorShift(Script):
 
                     # DEBUG FOR USER REPORTING
                     modified_gcode += print_debug("Version:", self.version)
-                    modified_gcode += print_debug("Clamp_choice:", clamp_choice, "  Direction:", direction, "  Modifier:", modifier)
+                    modified_gcode += print_debug("Clamp_choice:", clamp_choice, "  Direction:", direction)
+                    modified_gcode += print_debug("Modifier:", modifier, "  Rate Modifier:", rate_modifier)
+                    modified_gcode += print_debug("Pattern:", pattern)
                     modified_gcode += print_debug("Change_rate:", change_rate, "  Initial_flows:", initial_flows, "  Final_flows", final_flows)
                     modified_gcode += print_debug("Qty_extruders:", qty_extruders, "  Flow_min:", flow_min)
                     modified_gcode += print_debug("Percent_start:", percent_start, "  Percent_end:", percent_end)
                     modified_gcode += print_debug("Layer_start:", layer_start, "  Layer_end:", layer_end)
 
                     # INITIATE VALUES USED THROUGH THE AFFECTED LAYERS
-                    changes_total = int(adjusted_layers/change_rate)  # how many times are we allowed to adjust
+                    if change_rate != 0:
+                        changes_total = int(adjusted_layers/change_rate)  # how many times are we allowed to adjust
+                    else:
+                        changes_total = 0
+
                     changes_per_extruder = int(changes_total/(qty_extruders-1))
                     current_extruder = 0
                     next_extruder = 1
@@ -359,6 +386,8 @@ class ColorShift(Script):
                         base_input[current_extruder], base_input[next_extruder] = standard_shift(ext_fraction, changes_per_extruder)
                     elif modifier == 'wood':
                         base_input[current_extruder], base_input[next_extruder] = wood_shift(0.05, 0.25)
+                    elif modifier == 'pattern':
+                        base_input[current_extruder], base_input[next_extruder] = pattern_shift(pattern)
 
                     # Part 2 initialize what percentage to reach wrap extruders back to start if out of range
                     ext_fraction -= 1
@@ -383,10 +412,10 @@ class ColorShift(Script):
                         modified_gcode += adjust_extruder_rate(line, *ext_gcode_list[::-1])
 
                     # CHANGE THE POSITION FOR NEXT RUN
-                    if modifier == 'normal':
+                    if rate_modifier == 'normal':
                         current_position += standard_rate(change_rate)
-                    elif modifier == 'wood':
-                        current_position += wood_rate(change_rate, change_rate*2)
+                    elif rate_modifier == 'random':
+                        current_position += random_rate(change_rate, change_rate*2)
 
                 # CHANGES MADE AFTER THE LAST AFFECTED LAYER TO COMPLETE THE PRINT WITH
                 elif ";LAYER:" + str(current_position) in line:  # Runs last and only runs once
@@ -441,12 +470,18 @@ def wood_shift(min_percentage, max_percentage):
     return random_value, 1-random_value
 
 
+def pattern_shift(list):
+    value = list.pop()
+    list.insert(0, value)
+    return value, 1-value
+
+
 # RATES AFFECT FREQUENCY OF SHIFTS AND RETURN ONE VALUE
 def standard_rate(rate):
     return rate
 
 
-def wood_rate(min_percentage, max_percentage):
+def random_rate(min_percentage, max_percentage):
     random_value = int(random.uniform(min_percentage, max_percentage))
     return random_value
 

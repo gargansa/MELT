@@ -1,6 +1,3 @@
-# current bugs
-# Two post processors wont run at the same time. Probably a Cura Issue
-
 # Current Version contains
 # Support for 2-4 extruders
 # Initial Flow for raft or anything before affected layers
@@ -15,10 +12,15 @@
 # Ability to set the initial extruder rate and not shift through the print by setting change rate to 0
 # Pattern Modifier added (Heartbeat)
 # Split Rate Modifiers from Modifiers to add versatility
+# Allowed for multiple runs of the script (this allows you to shift 1:0 > 0:1 for the first 20% of the print and then shift 0:1 > 1:0 for the last 20%)
+# Enabled ability to wrap the shift back to the beginning nozzle with user input circular or linear
 
+# Current Bugs
+# duplicate values when running multiple scripts that overlap affected areas
+# Its possible to enter non numeral values for initial and final extruder values  but non numerals would break the code
 
-# Next features
-# Enable ability to wrap the shift back to the beginning nozzle with user input circular or linear
+# Future Updates
+# More Modifiers (exponential, logarithmic)
 
 # Credits for contributions
 # gargansa, bass4aj
@@ -34,8 +36,8 @@ def clamp(value, minimum, maximum):
 # Function to compile the initial setup into a string
 def initiate_extruder(existing_gcode, *ext):
     qty_ext = len(ext)
-    setup_line = ";Modified by ColorShift" + "\n"
-    setup_line += existing_gcode + " Modified:\n"
+    setup_line = ";Modified:" + "\n"  # to prevent future runs from duplicating
+    setup_line += existing_gcode + "\n;Modified by ColorShift:\n"
     # Define tool
     for i in range(0, qty_ext):
         if i == 0:
@@ -63,7 +65,7 @@ def adjust_extruder_rate(existing_gcode, *ext):
     i = 0
     for item in ext:
         if i == 0:
-            setup_line = existing_gcode + "  \nM567 P0 E" + str(item)
+            setup_line = existing_gcode + "\nM567 P0 E" + str(item)
         else:
             setup_line += ":" + str(item)
         i += 1
@@ -182,14 +184,14 @@ class ColorShift(Script):
                     "description": "::Linear: Start with primary extruder finish with last extruder. ::Circular: Start with primary extruder shift through to last extruder and then shift back to primary extruder",
                     "type": "enum",
                     "options": {"1":"Linear","0":"Circular"},
-                    "default_value": "linear"
+                    "default_value": "1"
                 },
                 "e_trigger":
                 {
                     "label": "Modifier Type",
                     "description": "::Normal: Sets the shift to change gradually throughout the length of the layers within the clamp. ::Wood Texture: Sets one extruder at a random small percentage and adjusts change frequency by a random amount, simulating wood grain. ::Repeating Pattern: Repeats a set extruder pattern throughout the print. ",
                     "type": "enum",
-                    "options": {"normal":"Normal", "wood":"Wood Texture", "pattern":"Repeating Pattern"},
+                    "options": {"normal":"Normal", "wood":"Wood Texture", "pattern":"Repeating Pattern", "random":"Random"},
                     "default_value": "normal"
                 },
                 "f_trigger":
@@ -271,7 +273,7 @@ class ColorShift(Script):
         loop = self.getSettingValueByKey("c_trigger")  # linear or circular (not currently enabled)
 
         modifier = self.getSettingValueByKey("e_trigger")  # normal, wood, pattern
-        rate_modifier = self.getSettingValueByKey("f_trigger")
+        rate_modifier = self.getSettingValueByKey("f_trigger")  # normal, random
         change_rate = int(self.getSettingValueByKey("change_rate"))
         initial_flows = [float(initial_flow) for initial_flow in self.getSettingValueByKey("initial_flow").strip().split(',')]
         final_flows = [float(final_flow) for final_flow in self.getSettingValueByKey("final_flow").strip().split(',')]
@@ -297,7 +299,9 @@ class ColorShift(Script):
             layer_start, layer_end = layer_end, layer_start
 
         current_position = 0
+        end_position = 0
         index = 0
+        has_been_run = 0
 
         # Iterate through the layers
         for active_layer in data:
@@ -307,7 +311,9 @@ class ColorShift(Script):
 
             modified_gcode = ""
             for line in lines:
-                if ";LAYER_COUNT:" in line:
+                if ";Modified:" in line:
+                    has_been_run = 1
+                elif ";LAYER_COUNT:" in line:
                     # FINDING THE ACTUAL AFFECTED LAYERS
                     total_layers = float(line[(line.index(':') + 1): len(line)])
 
@@ -350,11 +356,14 @@ class ColorShift(Script):
                         ext_gcode_list[ext_gcode_list.index(code)] = format(base_input[gcode_index] * flow_adjust * flow_clamp_adjust + flow_min, '.3f')
                         gcode_index += 1
 
-                    # change direction of shift if set by user
-                    if direction == 'normal':
-                        modified_gcode += initiate_extruder(line, *ext_gcode_list)
+                    if has_been_run == 0:
+                        # change direction of shift if set by user
+                        if direction == 'normal':
+                            modified_gcode += initiate_extruder(line, *ext_gcode_list)
+                        else:
+                            modified_gcode += initiate_extruder(line, *ext_gcode_list[::-1])
                     else:
-                        modified_gcode += initiate_extruder(line, *ext_gcode_list[::-1])
+                        modified_gcode += line
 
                     # DEBUG FOR USER REPORTING
                     modified_gcode += print_debug("Version:", self.version)
@@ -366,13 +375,15 @@ class ColorShift(Script):
                     modified_gcode += print_debug("Percent_start:", percent_start, "  Percent_end:", percent_end)
                     modified_gcode += print_debug("Layer_start:", layer_start, "  Layer_end:", layer_end)
 
+
                     # INITIATE VALUES USED THROUGH THE AFFECTED LAYERS
                     if change_rate != 0:
                         changes_total = int(adjusted_layers/change_rate)  # how many times are we allowed to adjust
                     else:
                         changes_total = 0
 
-                    changes_per_extruder = int(changes_total/(qty_extruders-1))
+                    #changes_per_extruder = int(changes_total/(qty_extruders-1))
+                    changes_per_extruder = int(changes_total/(qty_extruders-int(loop)))
                     current_extruder = 0
                     next_extruder = 1
                     ext_fraction = changes_per_extruder
@@ -388,6 +399,8 @@ class ColorShift(Script):
                         base_input[current_extruder], base_input[next_extruder] = wood_shift(0.05, 0.25)
                     elif modifier == 'pattern':
                         base_input[current_extruder], base_input[next_extruder] = pattern_shift(pattern)
+                    elif modifier == 'random':
+                        base_input[current_extruder], base_input[next_extruder] = random_shift()
 
                     # Part 2 initialize what percentage to reach wrap extruders back to start if out of range
                     ext_fraction -= 1
@@ -418,7 +431,7 @@ class ColorShift(Script):
                         current_position += random_rate(change_rate, change_rate*2)
 
                 # CHANGES MADE AFTER THE LAST AFFECTED LAYER TO COMPLETE THE PRINT WITH
-                elif ";LAYER:" + str(current_position) in line:  # Runs last and only runs once
+                elif ";LAYER:" + str(end_position) in line:  # Runs last and only runs once
                     # SETTING THE FLOWS SET BY USER IN EXPERT CONTROLS
                     while len(final_flows) < len(base_input):  # Ensure at least as many are set as needed
                         final_flows.append(float(0))
@@ -435,19 +448,18 @@ class ColorShift(Script):
                         total_value += base_input[i]
                         i += 1
 
-                        # ASSIGN THE INITIAL VALUES TO A SINGLE GCODE LINE
-                        ext_gcode_list = [''] * qty_extruders
-                        gcode_index = 0
-                        for code in ext_gcode_list:
-                            ext_gcode_list[ext_gcode_list.index(code)] = format(
-                                base_input[gcode_index] * flow_adjust * flow_clamp_adjust + flow_min, '.3f')
-                            gcode_index += 1
+                    # ASSIGN THE INITIAL VALUES TO A SINGLE GCODE LINE
+                    ext_gcode_list = [''] * qty_extruders
+                    gcode_index = 0
+                    for code in ext_gcode_list:
+                        ext_gcode_list[ext_gcode_list.index(code)] = format(base_input[gcode_index] * flow_adjust * flow_clamp_adjust + flow_min, '.3f')
+                        gcode_index += 1
 
-                        # change direction of shift if set by user
-                        if direction == 'normal':
-                            modified_gcode += adjust_extruder_rate(line, *ext_gcode_list)
-                        else:
-                            modified_gcode += adjust_extruder_rate(line, *ext_gcode_list[::-1])
+                    # change direction of shift if set by user
+                    if direction == 'normal':
+                        modified_gcode += adjust_extruder_rate(line, *ext_gcode_list)
+                    else:
+                        modified_gcode += adjust_extruder_rate(line, *ext_gcode_list[::-1])
 
                 # LEAVE ALL OTHER LINES ALONE SINCE THEY ARE NOT NEW LAYERS
                 else:
@@ -476,6 +488,11 @@ def pattern_shift(list):
     return value, 1-value
 
 
+def random_shift():
+    random_value = random.uniform(0,1)
+    return random_value, 1-random_value
+
+
 # RATES AFFECT FREQUENCY OF SHIFTS AND RETURN ONE VALUE
 def standard_rate(rate):
     return rate
@@ -484,4 +501,5 @@ def standard_rate(rate):
 def random_rate(min_percentage, max_percentage):
     random_value = int(random.uniform(min_percentage, max_percentage))
     return random_value
+
 

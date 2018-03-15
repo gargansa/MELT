@@ -15,6 +15,7 @@
 # Allowed for multiple runs of the script (this allows you to shift 1:0 > 0:1 for the first 20% of the print and then shift 0:1 > 1:0 for the last 20%)
 # Enabled ability to wrap the shift back to the beginning nozzle with user input circular or linear
 # Added Slope Modifier
+# Added Ellipse Modifier
 
 # Current Bugs
 # duplicate values when running multiple scripts that overlap affected areas
@@ -193,7 +194,7 @@ class ColorShift(Script):
                     "label": "Modifier Type",
                     "description": "::Normal: Sets the shift to change gradually throughout the length of the layers within the clamp. ::Wood Texture: Sets one extruder at a random small percentage and adjusts change frequency by a random amount, simulating wood grain. ::Repeating Pattern: Repeats a set extruder pattern throughout the print. ",
                     "type": "enum",
-                    "options": {"normal":"Normal", "wood":"Wood Texture", "pattern":"Repeating Pattern", "random":"Random", "fraction":"Fraction", "slope":"Slope Formula"},
+                    "options": {"normal":"Normal", "wood":"Wood Texture", "pattern":"Repeating Pattern", "random":"Random", "slope":"Slope Formula", "ellipse":"Ellipse Formula"},
                     "default_value": "normal"
                 },
                 "f_trigger":
@@ -429,10 +430,10 @@ class ColorShift(Script):
                         base_input[current_extruder], base_input[next_extruder] = pattern_shift(pattern)
                     elif modifier == 'random':
                         base_input[current_extruder], base_input[next_extruder] = random_shift()
-                    elif modifier == 'fraction':
-                        base_input[current_extruder], base_input[next_extruder] = fraction_shift(ext_fraction/changes_per_extruder)
                     elif modifier == 'slope':
                         base_input[current_extruder], base_input[next_extruder] = slope_shift(ext_fraction, changes_per_extruder, slope, y_intercept)
+                    elif modifier == 'ellipse':
+                        base_input[current_extruder], base_input[next_extruder] = ellipse_shift(ext_fraction/changes_per_extruder)
 
                     # Part 2 initialize what percentage to reach wrap extruders back to start if out of range
                     ext_fraction -= 1
@@ -525,15 +526,17 @@ def random_shift():
     return random_value, 1-random_value
 
 
-#Needs better name and more work
-def fraction_shift(value):
-    fraction = 1/(1+value)
-    return fraction, 1-fraction
-
-
 def slope_shift(x_numerator, x_denomerator, m_slope, y_intercept):
     y = (m_slope*x_numerator/x_denomerator)+y_intercept
     y = clamp(y, 0, 1)
+    return 1-y, y
+
+
+def ellipse_shift(x):
+    y = 4 - ((0.12*x*x) + (1.12 * x) + 2.78)
+    y = clamp(y, 0, 1)
+    y = pow(y, 0.5)
+    y = clamp(y, 0, 1)  # This is unnecessary but here just as an in case.
     return 1-y, y
 
 
@@ -545,6 +548,5 @@ def standard_rate(rate):
 def random_rate(min_percentage, max_percentage):
     random_value = int(random.uniform(min_percentage, max_percentage))
     return random_value
-
 
 

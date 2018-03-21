@@ -17,6 +17,7 @@
 # Added Slope Modifier
 # Added Ellipse Modifier
 # Added Lerp Modifier
+# Changed Initial extruder code to allow user to make adjustments
 
 # Current Bugs
 # duplicate values when running multiple scripts that overlap affected areas
@@ -38,29 +39,13 @@ def clamp(value, minimum, maximum):
 
 
 # Function to compile the initial setup into a string
-def initiate_extruder(existing_gcode, *ext):
-    qty_ext = len(ext)
-    setup_line = ";Modified:" + "\n"  # to prevent future runs from duplicating
-    setup_line += existing_gcode + "\n"
-    # Define tool
-    for i in range(0, qty_ext):
-        if i == 0:
-            setup_line += "M563 P0 D" + str(i)
-        else:
-            setup_line += ":" + str(i)
-    setup_line += " H1 ;Define tool 0" + "\n"
-    # Position tool
-    #for i in range(0, qty_ext):
-    #    setup_line += "M563 P" + str(i + 1) + " D" + str(i) + " H1"
-    #    setup_line += " ;Position " + str(i + 1) + " tool" + "\n"
-    # Set axis offsets
-    setup_line += "G10 P0 X0 Y0 Z0 ;Set tool 0 axis offsets" + "\n"
-    # Activate tool
-    setup_line += "G10 P0 R120 S220 ;Set initial tool 0 active"
-    # Set initial extrusion rate
-    setup_line += adjust_extruder_rate("", *ext)
-    # Initiate the tool
-    setup_line += "M568 P0 S1 ;Turn on tool mixing for the extruder" + "\n"
+def initiate_extruder(existing_gcode, *gcode):
+    setup_line = ""
+    setup_line += existing_gcode
+    for line in gcode:
+        if line != str(""):
+            setup_line += "\n" + str(line) #+ "\n"
+
     return setup_line
 
 
@@ -100,6 +85,14 @@ class Melt(Script):
             "version": 2,
             "settings":
             {
+                "firmware_type":
+                {
+                    "label": "Firmware Type",
+                    "description": "Type of Firmware Supported.",
+                    "type": "enum",
+                    "options": {"duet":"Duet"},
+                    "default_value": "duet"
+                },
                 "qty_extruders":
                 {
                     "label": "Number of extruders",
@@ -257,6 +250,54 @@ class Melt(Script):
                     "type": "bool",
                     "default_value": false
                 },
+                "enable_initial":
+                {
+                    "label": "Enable Initial Setup",
+                    "description": "If your extruder setup isn't already set in the duet’s sd card settings.",
+                    "type": "bool",
+                    "default_value": false,
+                    "enabled": "e1_trigger"
+                },
+                "initial_a":
+                {
+                    "label": "Define Tool",
+                    "description": "Define Tool",
+                    "type": "str",
+                    "default_value": "M563 P0 D0:1 H1",
+                    "enabled": "enable_initial"
+                },
+                "initial_b":
+                {
+                    "label": "Set Tool Axis Offsets",
+                    "description": "Set Tool Axis Offsets",
+                    "type": "str",
+                    "default_value": "G10 P0 X0 Y0 Z0",
+                    "enabled": "enable_initial"
+                },
+                "initial_c":
+                {
+                    "label": "Set Initial Tool Active",
+                    "description": "Set Initial Tool Active",
+                    "type": "str",
+                    "default_value": "G10 P0 R120 S220",
+                    "enabled": "enable_initial"
+                },
+                "initial_d":
+                {
+                    "label": "Turn On Tool Mixing For The Extruder",
+                    "description": "Turn On Tool Mixing For The Extruder",
+                    "type": "str",
+                    "default_value": "M568 P0 S1",
+                    "enabled": "enable_initial"
+                },
+                "initial_e":
+                {
+                    "label": "Extra GCode",
+                    "description": "Any Extra Gcode To Run At Start Of Print.",
+                    "type": "str",
+                    "default_value": "",
+                    "enabled": "enable_initial"
+                },
                 "initial_flow":
                 {
                     "label": "Initial Main Flow",
@@ -325,6 +366,13 @@ class Melt(Script):
         lerp_i = self.getSettingValueByKey("lerp_i")
         slope_m = self.getSettingValueByKey("slope_m")
         slope_i = self.getSettingValueByKey("slope_i")
+
+        enable_initial = self.getSettingValueByKey("enable_initial")
+        initial_a = self.getSettingValueByKey("initial_a")
+        initial_b = self.getSettingValueByKey("initial_b")
+        initial_c = self.getSettingValueByKey("initial_c")
+        initial_d = self.getSettingValueByKey("initial_d")
+        initial_e = self.getSettingValueByKey("initial_e")
 
         # INITIATE EXTRUDERS AS ZERO EXCEPT FIRST ONE
         base_input = [0] * qty_extruders
@@ -399,14 +447,15 @@ class Melt(Script):
                         ext_gcode_list[ext_gcode_list.index(code)] = format(base_input[gcode_index] * flow_adjust * flow_clamp_adjust + flow_min, '.3f')
                         gcode_index += 1
 
+                    modified_gcode += line  # list the initial line info
+
                     if has_been_run == 0:
-                        # change direction of shift if set by user
+                        if enable_initial:
+                            modified_gcode += initiate_extruder("", initial_a, initial_b, initial_c, initial_d, initial_e)
                         if direction == 'normal':
-                            modified_gcode += initiate_extruder(line, *ext_gcode_list)
+                            modified_gcode += adjust_extruder_rate("", *ext_gcode_list)
                         else:
-                            modified_gcode += initiate_extruder(line, *ext_gcode_list[::-1])
-                    else:
-                        modified_gcode += line
+                            modified_gcode += adjust_extruder_rate("", *ext_gcode_list[::-1])
 
                     # DEBUG FOR USER REPORTING
                     modified_gcode += print_debug("Version:", self.version)

@@ -19,16 +19,16 @@ Please visit the [melt Wiki](https://github.com/gargansa/melt/wiki) for more inf
 ## Current Features List
 1. Support for 2-4 extruders
 2. allows the shift to start at any layer or percentage of the print and stop at any layer or percentage.
-2. Initial Flow setting for raft or anything before affected layers
-3. Shift Modifiers  - Normal, Wood Texture, Repeating Pattern, Random, Lerp, Slope, Ellipse
-4. Rate Modifiers - Normal, Random 
-5. Direction Modifier (incase you loaded the filament into opposite extruders)
-6. Final Flow setting for anything after the affected layers
-7. Debug reporting to gcode file for troubleshooting user problems that may arise
-8. Ability to only set the initial extruder rate and not shift through the print by setting change rate to 0
-9. Multiple runs of script will allow you to shift from 1:0 to 0:1 for the first % of the print and then 0:1 to 1:0 for the next % of the print 
-10. Option to wrap the shift back to the beginning nozzle with user input circular or linear to just end at the last extruder
-11. Allows a gradient shift through any number of objects in the same direction.
+3. Initial Flow setting for raft or anything before affected layers
+4. Shift Modifiers  - Normal, Wood Texture, Repeating Pattern, Random, Lerp, Slope, Ellipse
+5. Rate Modifiers - Normal, Random 
+6. Direction Modifier (incase you loaded the filament into opposite extruders)
+7. Final Flow setting for anything after the affected layers
+8. Debug reporting to gcode file for troubleshooting user problems that may arise
+9. Ability to only set the initial extruder rate and not shift through the print by setting change rate to 0
+10. Multiple runs of script will allow you to shift from 1:0 to 0:1 for the first % of the print and then 0:1 to 1:0 for the next % of the print 
+11. Option to wrap the shift back to the beginning nozzle with user input circular or linear to just end at the last extruder
+12. Allows a gradient shift through any number of objects in the same direction.
 
 ## Possible Next Features
 1. Ability to change at a specific layer once
@@ -49,5 +49,6 @@ Please visit the [melt Wiki](https://github.com/gargansa/melt/wiki) for more inf
 1. Its possible to enter non numeral values for initial and final extruder values  but non numerals would break the code
 2. Possibly need to be able to edit P0 part of line on each extruder adjustment
 3. Lerp, Slope, Ellipse Modifiers may need touchups
+4. 
 
 

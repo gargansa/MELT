@@ -36,6 +36,10 @@ Please visit the [melt Wiki](https://github.com/gargansa/melt/wiki) for more inf
 3. Having the ability to apply both "fixed mix ratios" and "gradients" to different parts of a multi file print.
 4. Dynamically display extruders to account for both the Dual Compound and QuadFusion extruders
 5. Increasing the number of modifiers as long as they are unique, artistic or useful.
+6. Ability to set start and end range values to each extruder
+7. Ability to select which extruders to preform the interpolation with when using three or four extruders
+8. Ability to extrude with both extruders on compound, and all four on QuadFusion at once to achieve faster print time.
+9. Ability to define starting and stopping layers for mixes. Example: First 50% of print, shift between 0.5,0.0,0.0,0.5 to 0.0,0.5,0.5,0.0 and last 50% of print shift from 0.5,0.5,0.0,0.0 to 0.0,0.0,0.5,0.5
 
 ## Longer term goals (complex goals)
 1. Ability to gradient from side to side, or bottom corner to opposing top corner.
@@ -45,7 +49,5 @@ Please visit the [melt Wiki](https://github.com/gargansa/melt/wiki) for more inf
 1. Its possible to enter non numeral values for initial and final extruder values  but non numerals would break the code
 2. Possibly need to be able to edit P0 part of line on each extruder adjustment
 3. Lerp, Slope, Ellipse Modifiers may need touchups
-
-
 
 

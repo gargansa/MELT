@@ -2,7 +2,7 @@
 
 A Cura plugin that adds support for the [M3D ProMega 3D Printer](https://store.printm3d.com/pages/promega) Compound Extruder and QuadFusion Extruder.
 
-Please visit the [melt Wiki](https://github.com/gargansa/melt/wiki) for more information!
+Please visit the [melt Wiki](https://github.com/gargansa/MELT/wiki) for more information!
 
 ## Cura
 [Cura](https://ultimaker.com/en/products/ultimaker-cura-software) is a 3rd party slicing software created and maintained by the folks over at [Ultimaker](https://ultimaker.com/). This software is provided for free and can be used to generate [.gcode](https://en.wikipedia.org/wiki/G-code) files for use with your [M3D ProMega 3D Printer](https://store.printm3d.com/pages/promega).

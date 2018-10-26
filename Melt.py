@@ -5,6 +5,7 @@ from ..Script import Script
 import random
 
 
+
 # Convenience function for gargansa's coding familiarity
 def clamp(value, minimum, maximum):
     return max(minimum, min(value, maximum))
